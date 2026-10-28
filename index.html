@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Юнеман — вертикалки</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+:root {
+  --font-anthropic-sans: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-anthropic-serif: "Source Serif 4", Georgia, serif;
+  --color-fg: #1f1e1b; --color-fg-muted: #6b6860; --color-bg: #faf9f6; --color-panel: #ffffff;
+  --color-border-line: #e6e3dc; --color-ok: #2f7d4f; --color-warn: #a86b12; --color-bad: #b4372f;
+  --cds-text-secondary: #6b6860; --cds-surface-popover: #ffffff; --cds-border: #dcd8cf;
+  --cds-shadow-popover: 0 4px 16px rgba(0,0,0,.10);
+  --cds-chart-reference: #9a958a; --cds-chart-grid: #ece9e2; --cds-chart-axis: #c9c4b9; --cds-chart-muted: #c9c4b9;
+  --cds-font-size-caption: 12.5px; --cds-font-size-body: 15px; --cds-font-size-heading: 17px; --cds-font-size-title: 30px;
+  --cds-font-weight-medium: 560;
+  --cds-gap-xs: 4px; --cds-gap-sm: 8px; --cds-gap-md: 12px; --cds-gap-lg: 20px; --cds-gap-xl: 32px;
+  --cds-pad-xs: 4px; --cds-pad-sm: 8px; --cds-pad-md: 12px; --cds-pad-lg: 18px; --cds-pad-xl: 28px;
+  --cds-radius: 10px; --cds-dur-slow: .3s;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-fg: #ece9e2; --color-fg-muted: #a39f95; --color-bg: #191816; --color-panel: #23221f;
+    --color-border-line: #36342f; --color-ok: #6cc28f; --color-warn: #e0a54a; --color-bad: #ec7d74;
+    --cds-text-secondary: #a39f95; --cds-surface-popover: #2b2a26; --cds-border: #3e3c36;
+    --cds-shadow-popover: 0 4px 16px rgba(0,0,0,.4);
+    --cds-chart-reference: #7d796f; --cds-chart-grid: #302e2a; --cds-chart-axis: #4a4740; --cds-chart-muted: #4a4740;
+  }
+}
+html, body { margin: 0; background: var(--color-bg); color: var(--color-fg); font-family: var(--font-anthropic-sans); }
+#dash-root { max-width: 1100px; margin: 0 auto; padding: 28px 16px 48px; box-sizing: border-box; }
+@media (min-width: 700px) { #dash-root { padding: 40px 32px 64px; } :root { --cds-font-size-title: 36px; } }
+</style>
+<script>
+(function () {
+  const isDark = () => matchMedia('(prefers-color-scheme: dark)').matches;
+  const light = ['#c96442', '#3d6fb4', '#2f8a6b', '#8a5bb0'];
+  const dark = ['#e0835f', '#6f9be0', '#5cbf98', '#b48ad8'];
+  const ds = {}, calcs = [], draws = {};
+  let params = {};
+  const run = (name) => {
+    const fn = draws[name];
+    if (!fn) return;
+    for (const el of document.querySelectorAll('[data-draw="' + name + '"]')) {
+      try { fn(el); } catch (e) { console.error(name, e); }
+    }
+  };
+  const runAll = () => { for (const n in draws) run(n); };
+  window.dash = {
+    get colors() { return isDark() ? dark : light; },
+    data: (id) => ds[id] || {status: 'loading', data: []},
+    calc: (id, spec) => calcs.push(Object.assign({id}, spec)),
+    loader: () => {},
+    onData: () => {},
+    refresh: () => {},
+    setLink: () => {},
+    draw: (name, fn) => { if (fn) draws[name] = fn; else run(name); },
+    params: () => params,
+    setParams: (o) => { params = Object.assign({}, params, o); runAll(); },
+    resetParams: () => { params = {}; runAll(); },
+    _load: (rows, status) => {
+      ds.videos = {status: status || 'ok', data: rows};
+      for (const c of calcs) {
+        try { ds[c.id] = {status: ds.videos.status, data: c.fn(...c.inputs.map((i) => (ds[i] || {data: []}).data))}; }
+        catch (e) { console.error(c.id, e); ds[c.id] = {status: 'error', data: []}; }
+      }
+      runAll();
+    },
+    _runAll: runAll
+  };
+})();
+</script>
+</head>
+<body>
+<div id="dash-root">
+<style>
+.yn { font-family: var(--font-anthropic-sans); color: var(--color-fg); display: grid; gap: var(--cds-gap-lg); }
+.yn-head { display: grid; gap: var(--cds-gap-sm); }
+.yn-head h1 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; }
+.yn-take { margin: 0; font-size: var(--cds-font-size-body); color: var(--color-fg-muted); max-width: 60rem; }
+.yn-take b { color: var(--color-fg); font-weight: var(--cds-font-weight-medium); }
+.yn-month { display: inline-flex; align-items: center; gap: var(--cds-gap-sm); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.yn-month select { font: inherit; color: var(--color-fg); background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-xs) var(--cds-pad-sm); }
+.yn-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr)); gap: var(--cds-gap-md); }
+.yn-tile { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-md) var(--cds-pad-lg); display: grid; gap: var(--cds-gap-xs); }
+.yn-tile.total { border-width: 2px; }
+.yn-tile-name { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); display: flex; align-items: center; gap: var(--cds-gap-xs); }
+.yn-dot { width: .625rem; height: .625rem; border-radius: 50%; display: inline-block; flex: none; }
+.yn-big { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.yn-sub { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); font-variant-numeric: tabular-nums; }
+.yn-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: grid; gap: var(--cds-gap-sm); min-width: 0; }
+.yn-card h2 { margin: 0; font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); }
+.yn-note { margin: 0; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.yn-legend { display: flex; flex-wrap: wrap; gap: var(--cds-gap-md); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.yn-legend span { display: inline-flex; align-items: center; gap: var(--cds-gap-xs); }
+.yn-chart { position: relative; min-height: 18rem; }
+.yn-chart svg { display: block; overflow: visible; }
+.yn-ctitle { font-size: var(--cds-font-size-caption); fill: var(--color-fg); }
+.yn-val { font-size: var(--cds-font-size-caption); fill: var(--color-fg-muted); font-variant-numeric: tabular-nums; }
+.yn-ref { stroke: var(--cds-chart-reference); stroke-dasharray: 3 3; }
+.yn-reflabel { font-size: var(--cds-font-size-caption); fill: var(--color-fg-muted); }
+.yn-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); max-width: 16rem; z-index: 2; }
+.yn-tip .t1 { color: var(--cds-text-secondary); }
+.yn-tip .t2 { font-weight: var(--cds-font-weight-medium); }
+.yn-fail { display: flex; align-items: center; justify-content: center; gap: var(--cds-gap-xs); min-height: inherit; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.yn-fail i { width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); display: inline-block; }
+.yn-scroll { overflow: auto; max-height: 26rem; }
+.yn-scroll.tall { max-height: 34rem; }
+.yn-table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; }
+.yn-table th { position: sticky; top: 0; background: var(--color-panel); text-align: left; font-weight: var(--cds-font-weight-medium); color: var(--color-fg-muted); padding: var(--cds-pad-xs) var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+.yn-table td { padding: var(--cds-pad-xs) var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); vertical-align: top; }
+.yn-table .num { text-align: right; white-space: nowrap; }
+.yn-table th.num { text-align: right; }
+.yn-table td.hot { color: var(--color-ok); font-weight: var(--cds-font-weight-medium); }
+.yn-table th button { all: unset; cursor: pointer; }
+.yn-tools { display: flex; flex-wrap: wrap; gap: var(--cds-gap-sm); align-items: center; }
+.yn-search { font: inherit; font-size: var(--cds-font-size-caption); color: var(--color-fg); background: var(--color-bg); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-xs) var(--cds-pad-sm); min-width: 0; flex: 1 1 10rem; }
+.yn-chips { display: flex; flex-wrap: wrap; gap: var(--cds-gap-xs); }
+.yn-chips button { font: inherit; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); background: transparent; border: 1px solid var(--color-border-line); border-radius: 999px; padding: 2px var(--cds-pad-sm); cursor: pointer; }
+.yn-chips button[aria-pressed="true"] { color: var(--color-fg); border-color: var(--color-fg); }
+.yn-foot { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); margin: 0; }
+[data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
+</style>
+
+<div class="yn">
+  <header class="yn-head" id="top">
+    <h1>Юнеман — вертикалки</h1>
+    <p class="yn-take"><span data-draw="month-name">—</span>: на четырёх площадках <b data-draw="total-views" data-source="totals" data-field="views">—</b> просмотров. Сильнее всего относительно своей площадки зашёл «<b data-draw="top-title" data-source="latest" data-field="title">—</b>» — ×<b data-draw="top-mult" data-source="latest" data-field="mult">—</b> к медиане, <span data-draw="top-plat" data-source="latest" data-field="platform">—</span>.</p>
+    <label class="yn-month">Месяц <select data-draw="month" aria-label="Месяц" data-source="totals"></select></label>
+  </header>
+
+  <div class="yn-tiles" id="totals">
+    <div class="yn-tile total">
+      <div class="yn-tile-name">Все площадки</div>
+      <div class="yn-big" data-draw="kpi-views" data-plat="Все" data-source="totals" data-field="views">—</div>
+      <div class="yn-sub"><span data-draw="kpi-videos" data-plat="Все" data-source="totals" data-field="videos">—</span> видео · залетело <span data-draw="kpi-viral" data-plat="Все" data-source="totals" data-field="viral">—</span></div>
+    </div>
+    <div class="yn-tile">
+      <div class="yn-tile-name"><i class="yn-dot" data-plat="YouTube"></i>YouTube Shorts</div>
+      <div class="yn-big" data-draw="kpi-views" data-plat="YouTube" data-source="totals" data-field="views">—</div>
+      <div class="yn-sub"><span data-draw="kpi-videos" data-plat="YouTube" data-source="totals" data-field="videos">—</span> видео · залетело <span data-draw="kpi-viral" data-plat="YouTube" data-source="totals" data-field="viral">—</span></div>
+    </div>
+    <div class="yn-tile">
+      <div class="yn-tile-name"><i class="yn-dot" data-plat="Instagram"></i>Instagram Reels</div>
+      <div class="yn-big" data-draw="kpi-views" data-plat="Instagram" data-source="totals" data-field="views">—</div>
+      <div class="yn-sub"><span data-draw="kpi-videos" data-plat="Instagram" data-source="totals" data-field="videos">—</span> видео · залетело <span data-draw="kpi-viral" data-plat="Instagram" data-source="totals" data-field="viral">—</span></div>
+    </div>
+    <div class="yn-tile">
+      <div class="yn-tile-name"><i class="yn-dot" data-plat="VK"></i>VK Клипы</div>
+      <div class="yn-big" data-draw="kpi-views" data-plat="VK" data-source="totals" data-field="views">—</div>
+      <div class="yn-sub"><span data-draw="kpi-videos" data-plat="VK" data-source="totals" data-field="videos">—</span> видео · залетело <span data-draw="kpi-viral" data-plat="VK" data-source="totals" data-field="viral">—</span></div>
+    </div>
+    <div class="yn-tile">
+      <div class="yn-tile-name"><i class="yn-dot" data-plat="TikTok"></i>TikTok</div>
+      <div class="yn-big" data-draw="kpi-views" data-plat="TikTok" data-source="totals" data-field="views">—</div>
+      <div class="yn-sub"><span data-draw="kpi-videos" data-plat="TikTok" data-source="totals" data-field="videos">—</span> видео · залетело <span data-draw="kpi-viral" data-plat="TikTok" data-source="totals" data-field="viral">—</span></div>
+    </div>
+  </div>
+
+  <section class="yn-card" id="top-views">
+    <h2>Топ-10 по просмотрам</h2>
+    <p class="yn-note">Самые просматриваемые ролики месяца в абсолютных цифрах, все площадки вместе. Полный цвет — ролик залетел на своей площадке.</p>
+    <div class="yn-legend">
+      <span><i class="yn-dot" data-plat="YouTube"></i>YouTube</span>
+      <span><i class="yn-dot" data-plat="Instagram"></i>Instagram</span>
+      <span><i class="yn-dot" data-plat="VK"></i>VK</span>
+      <span><i class="yn-dot" data-plat="TikTok"></i>TikTok</span>
+    </div>
+    <div class="yn-chart" data-draw="views-chart" data-source="latest"></div>
+  </section>
+
+  <section class="yn-card" id="viral">
+    <h2>Что залетело</h2>
+    <p class="yn-note">Топ-12 роликов месяца по тому, во сколько раз они обогнали медиану своей площадки — так YouTube и VK сравнимы. Залетел — от 1,5× медианы, такие залиты полным цветом.</p>
+    <div class="yn-legend">
+      <span><i class="yn-dot" data-plat="YouTube"></i>YouTube</span>
+      <span><i class="yn-dot" data-plat="Instagram"></i>Instagram</span>
+      <span><i class="yn-dot" data-plat="VK"></i>VK</span>
+      <span><i class="yn-dot" data-plat="TikTok"></i>TikTok</span>
+    </div>
+    <div class="yn-chart" data-draw="viral-chart" data-source="latest"></div>
+  </section>
+
+  <section class="yn-card" id="topics">
+    <h2>Один ролик — разные площадки</h2>
+    <p class="yn-note">Ролики, которые узнаются на двух площадках и больше (сопоставлены по названию и кадру). Зелёным — залетел на этой площадке.</p>
+    <div class="yn-scroll">
+      <table class="yn-table" data-source="topics" data-row-key="key">
+        <thead><tr>
+          <th data-field="topic">Ролик</th>
+          <th class="num" data-field="YouTube">YouTube</th>
+          <th class="num" data-field="Instagram">Instagram</th>
+          <th class="num" data-field="VK">VK</th>
+          <th class="num" data-field="TikTok">TikTok</th>
+        </tr></thead>
+        <tbody data-draw="topics-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="yn-card" id="all">
+    <h2>Все ролики месяца</h2>
+    <p class="yn-note">Последний замер каждого ролика. Нажмите на заголовок столбца, чтобы отсортировать.</p>
+    <div class="yn-tools">
+      <input class="yn-search" type="search" placeholder="Поиск по названию" aria-label="Поиск по названию">
+      <div class="yn-chips">
+        <button type="button" data-plat="" aria-pressed="true">Все</button>
+        <button type="button" data-plat="YouTube" aria-pressed="false">YouTube</button>
+        <button type="button" data-plat="Instagram" aria-pressed="false">Instagram</button>
+        <button type="button" data-plat="VK" aria-pressed="false">VK</button>
+        <button type="button" data-plat="TikTok" aria-pressed="false">TikTok</button>
+      </div>
+    </div>
+    <div class="yn-scroll tall">
+      <table class="yn-table" data-source="latest" data-row-key="key">
+        <thead><tr>
+          <th data-field="platform"><button type="button" data-sort="platform">Площадка</button></th>
+          <th data-field="title"><button type="button" data-sort="title">Ролик</button></th>
+          <th data-field="published"><button type="button" data-sort="published">Дата</button></th>
+          <th class="num" data-field="views" aria-sort="descending"><button type="button" data-sort="views">Просмотры</button></th>
+          <th class="num" data-field="likes"><button type="button" data-sort="likes">Лайки</button></th>
+          <th class="num" data-field="comments"><button type="button" data-sort="comments">Комменты</button></th>
+          <th class="num" data-field="mult"><button type="button" data-sort="mult">× медианы</button></th>
+        </tr></thead>
+        <tbody data-draw="all-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="yn-foot">Последний замер: <span data-draw="last-snap" data-source="videos" data-field="snapshot">—</span>. Цифры переписаны со скринов; названия роликов VK и TikTok — по субтитрам на обложке, их даты на скринах не видны. Итог месяца — сумма роликов, попавших на скрины, а не вся статистика аккаунта.</p>
+</div>
+
+<script>
+window.YN_PLATS = ['YouTube', 'Instagram', 'VK', 'TikTok'];
+window.ynColor = (p) => dash.colors[Math.max(0, window.YN_PLATS.indexOf(p))];
+window.ynFmt = (n) => n == null || isNaN(n) ? '' : (n >= 10000 ? new Intl.NumberFormat('ru', {notation: 'compact', maximumFractionDigits: 1}).format(n) : Number(n).toLocaleString('ru'));
+window.ynFull = (n) => n == null || isNaN(n) ? '' : Number(n).toLocaleString('ru');
+window.ynMult = (m) => m == null ? '' : Number(m).toLocaleString('ru', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+window.ynDate = (s) => s ? s.slice(8, 10) + '.' + s.slice(5, 7) : '';
+window.ynMonthName = (m) => {
+  const s = new Intl.DateTimeFormat('ru', {month: 'long', year: 'numeric', timeZone: 'UTC'}).format(new Date(m + '-01T00:00:00Z'));
+  return s.charAt(0).toUpperCase() + s.slice(1).replace(' г.', '');
+};
+window.ynMonths = () => {
+  const t = dash.data('totals');
+  if (t.status !== 'ok') return [];
+  return [...new Set(t.data.map((r) => r.month))].sort().reverse();
+};
+window.ynMonth = () => {
+  const ms = window.ynMonths();
+  const p = dash.params().month;
+  return p && ms.includes(p) ? p : ms[0];
+};
+window.ynState = {sort: 'views', dir: -1, plat: '', q: ''};
+
+for (const d of document.querySelectorAll('.yn-dot[data-plat]')) d.style.background = window.ynColor(d.dataset.plat);
+
+dash.calc('latest', {
+  inputs: ['videos'],
+  title: 'Ролики по месяцам',
+  description: 'Последний замер каждого ролика в месяце; × медианы = просмотры / медиана просмотров площадки за месяц; залетел — от 1,5×.',
+  fn: (videos) => {
+    const VIRAL = 1.5;
+    const num = (v) => (v == null || v === '' ? null : Number(v));
+    const best = new Map();
+    for (const r of videos) {
+      const month = String(r.snapshot).slice(0, 7);
+      const k = month + '|' + r.id;
+      const prev = best.get(k);
+      if (!prev || String(r.snapshot) > String(prev.snapshot)) best.set(k, Object.assign({}, r, {month}));
+    }
+    const rows = [...best.values()].map((r) => ({
+      key: r.month + '|' + r.id, month: r.month, id: r.id, platform: r.platform, title: r.title, topic: r.topic,
+      published: r.published || null, views: num(r.views), likes: num(r.likes), comments: num(r.comments), shares: num(r.shares)
+    }));
+    const groups = {};
+    for (const r of rows) (groups[r.month + '|' + r.platform] = groups[r.month + '|' + r.platform] || []).push(r.views);
+    const median = (a) => { const s = a.slice().sort((x, y) => x - y); const h = Math.floor(s.length / 2); return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2; };
+    const med = {};
+    for (const k in groups) med[k] = median(groups[k]);
+    for (const r of rows) {
+      const m = med[r.month + '|' + r.platform];
+      r.mult = m ? Math.round((r.views / m) * 10) / 10 : null;
+      r.viral = r.mult != null && r.mult >= VIRAL;
+    }
+    return rows;
+  }
+});
+
+dash.calc('totals', {
+  inputs: ['latest'],
+  title: 'Итоги месяца по площадкам',
+  description: 'Сумма просмотров, число роликов и залетевших за месяц — по каждой площадке и всем вместе.',
+  fn: (latest) => {
+    const out = {};
+    for (const r of latest) {
+      for (const p of [r.platform, 'Все']) {
+        const k = r.month + '|' + p;
+        const o = out[k] = out[k] || {key: k, month: r.month, platform: p, views: 0, videos: 0, viral: 0};
+        o.views += r.views || 0; o.videos += 1; o.viral += r.viral ? 1 : 0;
+      }
+    }
+    return Object.values(out);
+  }
+});
+
+dash.calc('topics', {
+  inputs: ['latest'],
+  title: 'Один ролик на разных площадках',
+  description: 'Ролики с одной темой, найденные на двух площадках и больше: просмотры на каждой.',
+  fn: (latest) => {
+    const out = {};
+    for (const r of latest) {
+      const k = r.month + '|' + r.topic;
+      const o = out[k] = out[k] || {key: k, month: r.month, topic: r.topic, YouTube: null, Instagram: null, VK: null, TikTok: null, YouTube_viral: false, Instagram_viral: false, VK_viral: false, TikTok_viral: false, total: 0, n: 0};
+      if (o[r.platform] == null) o.n += 1;
+      o[r.platform] = (o[r.platform] || 0) + r.views;
+      o[r.platform + '_viral'] = o[r.platform + '_viral'] || r.viral;
+      o.total += r.views;
+    }
+    return Object.values(out).filter((o) => o.n >= 2).sort((a, b) => b.total - a.total);
+  }
+});
+
+window.ynFail = (el, status) => {
+  if (status !== 'error') return;
+  const f = document.createElement('div');
+  f.className = 'yn-fail';
+  f.append(document.createElement('i'), 'Не загрузилось');
+  el.append(f);
+};
+window.ynTop = () => {
+  const g = dash.data('latest');
+  if (g.status !== 'ok') return null;
+  const m = window.ynMonth();
+  return g.data.filter((r) => r.month === m && r.mult != null).sort((a, b) => b.mult - a.mult)[0] || null;
+};
+window.ynTotal = (plat) => {
+  const t = dash.data('totals');
+  if (t.status !== 'ok') return null;
+  return t.data.find((r) => r.month === window.ynMonth() && r.platform === plat) || null;
+};
+
+dash.draw('month', (sel) => {
+  const ms = window.ynMonths();
+  sel.replaceChildren(...ms.map((m) => new Option(window.ynMonthName(m), m)));
+  sel.value = window.ynMonth() || '';
+  sel.onchange = () => dash.setParams({month: sel.value || null});
+});
+
+dash.draw('month-name', (el) => {
+  const m = window.ynMonth();
+  el.textContent = m ? window.ynMonthName(m) : '—';
+});
+
+dash.draw('total-views', (el) => {
+  const r = window.ynTotal('Все');
+  if (r) el.setAttribute('data-where', 'key=' + encodeURIComponent(r.key));
+  el.textContent = r ? window.ynFull(r.views) : '—';
+});
+
+for (const [name, field] of [['kpi-views', 'views'], ['kpi-videos', 'videos'], ['kpi-viral', 'viral']]) {
+  dash.draw(name, (el) => {
+    const r = window.ynTotal(el.dataset.plat);
+    if (r) el.setAttribute('data-where', 'key=' + encodeURIComponent(r.key));
+    el.textContent = r ? (field === 'views' ? window.ynFmt(r.views) : String(r[field])) : '—';
+  });
+}
+
+for (const [name, field] of [['top-title', 'title'], ['top-mult', 'mult'], ['top-plat', 'platform']]) {
+  dash.draw(name, (el) => {
+    const r = window.ynTop();
+    if (r) el.setAttribute('data-where', 'key=' + encodeURIComponent(r.key));
+    el.textContent = r ? (field === 'mult' ? window.ynMult(r.mult) : r[field]) : '—';
+  });
+}
+
+dash.draw('last-snap', (el) => {
+  const g = dash.data('videos');
+  if (g.status !== 'ok' || !g.data.length) { el.textContent = '—'; return; }
+  let idx = 0;
+  g.data.forEach((r, i) => { if (String(r.snapshot) > String(g.data[idx].snapshot)) idx = i; });
+  el.setAttribute('data-row', String(idx));
+  const s = String(g.data[idx].snapshot);
+  el.textContent = s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4);
+});
+
+window.ynBars = (el, mode) => {
+  el.replaceChildren();
+  const g = dash.data('latest');
+  if (g.status !== 'ok') { window.ynFail(el, g.status); return; }
+  const m = window.ynMonth();
+  const byViews = mode === 'views';
+  const val = (d) => (byViews ? d.views : d.mult);
+  const rows = g.data.filter((r) => r.month === m && val(r) != null).sort((a, b) => val(b) - val(a)).slice(0, byViews ? 10 : 12);
+  if (!rows.length) return;
+  const W = Math.max(280, el.clientWidth || 600);
+  const slot = 46, top = byViews ? 4 : 22, H = top + rows.length * slot;
+  const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+  const label = (d) => (byViews ? window.ynFull(d.views) + ' · ' + d.platform : window.ynFmt(d.views) + ' · ×' + window.ynMult(d.mult));
+  const probe = svg.append('text').attr('class', 'yn-val');
+  let lw = 0;
+  for (const d of rows) { probe.text(label(d)); lw = Math.max(lw, probe.node().getComputedTextLength()); }
+  probe.remove();
+  const maxV = byViews ? d3.max(rows, val) : Math.max(d3.max(rows, val), 1.5);
+  const x = d3.scaleLinear([0, maxV], [0, Math.max(60, W - lw - 10)]);
+  if (!byViews) {
+    svg.append('line').attr('class', 'yn-ref').attr('x1', x(1.5)).attr('x2', x(1.5)).attr('y1', top - 4).attr('y2', H);
+    svg.append('text').attr('class', 'yn-reflabel').attr('x', x(1.5) + 4).attr('y', 12).text('порог 1,5×');
+  }
+  const row = svg.selectAll('g.r').data(rows).join('g').attr('class', 'r').attr('transform', (d, i) => `translate(0,${top + i * slot})`);
+  row.append('text').attr('class', 'yn-ctitle').attr('y', 13).each(function (d) {
+    const t = d3.select(this).text(d.title);
+    let s = d.title;
+    while (s.length > 4 && this.getComputedTextLength() > W - 4) { s = s.slice(0, -2); t.text(s + '…'); }
+  });
+  row.append('rect').attr('y', 19).attr('height', 14).attr('rx', 3)
+    .attr('width', (d) => Math.max(2, x(val(d)))).attr('fill', (d) => window.ynColor(d.platform)).attr('opacity', (d) => (d.viral ? 1 : 0.35));
+  row.append('text').attr('class', 'yn-val').attr('x', (d) => Math.max(2, x(val(d))) + 6).attr('y', 30).text(label);
+  const tip = document.createElement('div');
+  tip.className = 'yn-tip';
+  tip.hidden = true;
+  el.append(tip);
+  row.append('rect').attr('width', W).attr('height', slot).attr('fill', 'transparent')
+    .on('mousemove', (event, d) => {
+      const line = (cls, text) => { const div = document.createElement('div'); div.className = cls; div.textContent = text; return div; };
+      const extra = [d.likes != null ? window.ynFull(d.likes) + ' лайков' : '', d.comments != null ? window.ynFull(d.comments) + ' комм.' : ''].filter(Boolean).join(' · ');
+      tip.replaceChildren(
+        line('t1', d.platform + (d.published ? ' · ' + window.ynDate(d.published) : '')),
+        line('t2', d.title),
+        line('', window.ynFull(d.views) + ' просмотров · ×' + window.ynMult(d.mult) + ' к медиане'),
+        ...(extra ? [line('', extra)] : [])
+      );
+      tip.hidden = false;
+      const box = el.getBoundingClientRect();
+      const px = event.clientX - box.left, py = event.clientY - box.top;
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      tip.style.left = Math.max(0, Math.min(px + 12, box.width - tw)) + 'px';
+      tip.style.top = Math.max(0, Math.min(py + 12, box.height - th)) + 'px';
+    })
+    .on('mouseleave', () => { tip.hidden = true; });
+};
+dash.draw('views-chart', (el) => window.ynBars(el, 'views'));
+dash.draw('viral-chart', (el) => window.ynBars(el, 'mult'));
+
+dash.draw('topics-body', (tb) => {
+  tb.replaceChildren();
+  const g = dash.data('topics');
+  if (g.status !== 'ok') return;
+  const m = window.ynMonth();
+  for (const r of g.data.filter((x) => x.month === m)) {
+    const tr = document.createElement('tr');
+    tr.dataset.key = r.key;
+    const td0 = document.createElement('td');
+    td0.textContent = r.topic;
+    tr.append(td0);
+    for (const p of window.YN_PLATS) {
+      const td = document.createElement('td');
+      td.className = 'num' + (r[p + '_viral'] ? ' hot' : '');
+      td.textContent = window.ynFull(r[p]);
+      tr.append(td);
+    }
+    tb.append(tr);
+  }
+});
+
+dash.draw('all-body', (tb) => {
+  tb.replaceChildren();
+  const g = dash.data('latest');
+  if (g.status !== 'ok') return;
+  const st = window.ynState, m = window.ynMonth(), q = st.q.trim().toLowerCase();
+  const rows = g.data.filter((r) => r.month === m && (!st.plat || r.platform === st.plat) && (!q || String(r.title).toLowerCase().includes(q)));
+  rows.sort((a, b) => {
+    const va = a[st.sort], vb = b[st.sort];
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return (typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb), 'ru')) * st.dir;
+  });
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    tr.dataset.key = r.key;
+    const cells = [
+      [r.platform, ''], [r.title, ''], [window.ynDate(r.published), ''],
+      [window.ynFull(r.views), 'num'], [window.ynFull(r.likes), 'num'], [window.ynFull(r.comments), 'num'],
+      [window.ynMult(r.mult), 'num' + (r.viral ? ' hot' : '')]
+    ];
+    for (const [text, cls] of cells) {
+      const td = document.createElement('td');
+      if (cls) td.className = cls;
+      td.textContent = text;
+      tr.append(td);
+    }
+    tb.append(tr);
+  }
+});
+
+for (const btn of document.querySelectorAll('button[data-sort]')) {
+  btn.addEventListener('click', () => {
+    const st = window.ynState, k = btn.dataset.sort;
+    if (st.sort === k) st.dir = -st.dir;
+    else { st.sort = k; st.dir = ['title', 'platform'].includes(k) ? 1 : -1; }
+    for (const th of document.querySelectorAll('th[data-field]')) {
+      const b = th.querySelector('button[data-sort]');
+      if (!b) continue;
+      if (b.dataset.sort === st.sort) th.setAttribute('aria-sort', st.dir > 0 ? 'ascending' : 'descending');
+      else th.removeAttribute('aria-sort');
+    }
+    dash.draw('all-body');
+  });
+}
+for (const inp of document.querySelectorAll('.yn-search')) {
+  inp.addEventListener('input', () => { window.ynState.q = inp.value; dash.draw('all-body'); });
+}
+for (const chip of document.querySelectorAll('.yn-chips button[data-plat]')) {
+  chip.addEventListener('click', () => {
+    window.ynState.plat = chip.dataset.plat;
+    for (const c of document.querySelectorAll('.yn-chips button[data-plat]')) c.setAttribute('aria-pressed', String(c === chip));
+    dash.draw('all-body');
+  });
+}
+</script>
+
+</div>
+<script>
+fetch('data.json?v=' + Date.now(), {cache: 'no-store'})
+  .then((r) => r.json())
+  .then((rows) => dash._load(rows))
+  .catch(() => dash._load([], 'error'));
+let ynW = innerWidth;
+addEventListener('resize', () => { if (Math.abs(innerWidth - ynW) > 20) { ynW = innerWidth; dash._runAll(); } });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  for (const d of document.querySelectorAll('.yn-dot[data-plat]')) d.style.background = window.ynColor(d.dataset.plat);
+  dash._runAll();
+});
+</script>
+</body>
+</html>
