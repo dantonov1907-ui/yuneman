@@ -204,7 +204,7 @@ html, body { margin: 0; background: var(--color-bg); color: var(--color-fg); fon
 
   <section class="yn-card" id="all">
     <h2>Все ролики месяца</h2>
-    <p class="yn-note">Последний замер каждого ролика. Нажмите на заголовок столбца, чтобы отсортировать.</p>
+    <p class="yn-note">Ролики, вышедшие в этом месяце, с цифрами последнего замера. Нажмите на заголовок столбца, чтобы отсортировать.</p>
     <div class="yn-tools">
       <input class="yn-search" type="search" placeholder="Поиск по названию" aria-label="Поиск по названию">
       <div class="yn-chips">
@@ -231,7 +231,7 @@ html, body { margin: 0; background: var(--color-bg); color: var(--color-fg); fon
     </div>
   </section>
 
-  <p class="yn-foot">Последний замер: <span data-draw="last-snap" data-source="videos" data-field="snapshot">—</span>. Цифры переписаны со скринов; названия роликов VK и TikTok — по субтитрам на обложке, их даты на скринах не видны. Итог месяца — сумма роликов, попавших на скрины, а не вся статистика аккаунта.</p>
+  <p class="yn-foot">Последний замер: <span data-draw="last-snap" data-source="videos" data-field="snapshot">—</span>. Цифры переписаны со скринов; названия роликов VK и TikTok — по субтитрам на обложке, их даты на скринах не видны. Ролик считается в месяце выхода, а если дата не видна (VK, TikTok, Instagram) — в месяце, когда впервые попал на скрин; цифры — по последнему замеру. Итог месяца — сумма роликов со скринов, а не вся статистика аккаунта.</p>
 </div>
 
 <script>
@@ -262,17 +262,19 @@ for (const d of document.querySelectorAll('.yn-dot[data-plat]')) d.style.backgro
 dash.calc('latest', {
   inputs: ['videos'],
   title: 'Ролики по месяцам',
-  description: 'Последний замер каждого ролика в месяце; × медианы = просмотры / медиана просмотров площадки за месяц; залетел — от 1,5×.',
+  description: 'Ролик относится к месяцу выхода (если дата не видна — к месяцу, когда он впервые попал на скрин), просмотры — по последнему замеру; × медианы = просмотры / медиана просмотров площадки за месяц; залетел — от 1,5×.',
   fn: (videos) => {
     const VIRAL = 1.5;
     const num = (v) => (v == null || v === '' ? null : Number(v));
     const best = new Map();
     for (const r of videos) {
-      const month = String(r.snapshot).slice(0, 7);
-      const k = month + '|' + r.id;
-      const prev = best.get(k);
-      if (!prev || String(r.snapshot) > String(prev.snapshot)) best.set(k, Object.assign({}, r, {month}));
+      const prev = best.get(r.id);
+      const first = prev ? (String(r.snapshot) < prev.first ? String(r.snapshot) : prev.first) : String(r.snapshot);
+      const pub = r.published || (prev && prev.published) || null;
+      const keep = !prev || String(r.snapshot) > String(prev.snapshot) ? r : prev;
+      best.set(r.id, Object.assign({}, keep, {first, published: pub}));
     }
+    for (const r of best.values()) r.month = (r.published || r.first).slice(0, 7);
     const rows = [...best.values()].map((r) => ({
       key: r.month + '|' + r.id, month: r.month, id: r.id, platform: r.platform, title: r.title, topic: r.topic,
       published: r.published || null, views: num(r.views), likes: num(r.likes), comments: num(r.comments), shares: num(r.shares)
